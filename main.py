@@ -5,24 +5,41 @@ from database import Base, engine, get_db
 from models import User
 from schemas import UserCreate, UserLogin, Token
 from auth import hash_password, verify_password, create_access_token
-
-Base.metadata.create_all(bind=engine)
+import re
 
 app = FastAPI(title="Farm Management")
 
+# CORS Configuration
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://ruth-project-64ut.vercel.app"
+    "https://ruth-project-64ut.vercel.app",  # Your production Vercel URL
 ]
+
+# Custom CORS handler to allow all Vercel preview deployments
+def is_allowed_origin(origin: str) -> bool:
+    """Check if origin is in allowed list or is a Vercel preview deployment"""
+    if origin in origins:
+        return True
+    vercel_pattern = r"https://ruth-project-[a-z0-9]+-carlosgangazhas-projects\.vercel\.app"
+    if re.match(vercel_pattern, origin):
+        return True
+    return False
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins + ["https://ruth-project-64ut.vercel.app"],
+    allow_origin_regex=r"https://ruth-project-[a-z0-9]+-carlosgangazhas-projects\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+
+@app.get("/")
+def read_root():
+    return {"status": "healthy", "message": "Farm Management API"}
 
 @app.post("/signup", response_model=Token)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
