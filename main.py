@@ -5,42 +5,36 @@ from database import Base, engine, get_db
 from models import User
 from schemas import UserCreate, UserLogin, Token
 from auth import hash_password, verify_password, create_access_token
-import re
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Farm Management")
 
-# CORS Configuration
+# CORS Configuration - Allow all Vercel deployments
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "https://ruth-project-64ut.vercel.app",  # Your production Vercel URL
+    "https://ruth-project-64ut.vercel.app",
+    # Temporarily allow all origins to test (REMOVE IN PRODUCTION)
+    "*"
 ]
-
-# Custom CORS handler to allow all Vercel preview deployments
-def is_allowed_origin(origin: str) -> bool:
-    """Check if origin is in allowed list or is a Vercel preview deployment"""
-    if origin in origins:
-        return True
-    vercel_pattern = r"https://ruth-project-[a-z0-9]+-carlosgangazhas-projects\.vercel\.app"
-    if re.match(vercel_pattern, origin):
-        return True
-    return False
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins + ["https://ruth-project-64ut.vercel.app"],
-    allow_origin_regex=r"https://ruth-project-[a-z0-9]+-carlosgangazhas-projects\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
+    allow_origins=origins,
+    allow_credentials=False,  # MUST be False when using "*"
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin"],
     expose_headers=["*"],
+    max_age=3600,
 )
 
-
+# Health check endpoint
 @app.get("/")
 def read_root():
     return {"status": "healthy", "message": "Farm Management API"}
 
+# Authentication endpoints
 @app.post("/signup", response_model=Token)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
     # Check existing user
