@@ -60,6 +60,24 @@ class FieldCreate(BaseModel):
     area: float
     ndvi: Optional[float] = None
 
+class TaskCreate(BaseModel):
+    title: str
+    priority: str = "Medium"
+    due_date: date
+    assigned_to: Optional[str] = None
+
+class TaskResponse(BaseModel):
+    id: int
+    title: str
+    priority: str
+    due_date: date
+    assigned_to: Optional[str]
+    status: str
+    created_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
 class FieldResponse(BaseModel):
     id: int
     name: str
@@ -68,6 +86,20 @@ class FieldResponse(BaseModel):
     area: float
     ndvi: Optional[float] = None
     last_updated: datetime
+
+class InventoryCreate(BaseModel):
+    name: str
+    quantity: float
+    unit: str
+    min_stock: float
+
+class InventoryResponse(BaseModel):
+    id: int
+    name: str
+    quantity: float
+    unit: str
+    min_stock: float
+    created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

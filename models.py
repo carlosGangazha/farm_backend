@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
+
 class Field(Base):
     __tablename__ = "fields"
     
@@ -29,6 +30,8 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     fields = relationship("Field", back_populates="user")
+    inventory = relationship("Inventory", back_populates="user")
+    tasks = relationship("Task", back_populates="user")
 
 class Crop(Base):
     __tablename__ = "crops"
@@ -47,3 +50,31 @@ class Livestock(Base):
     breed = Column(String(100), nullable=False)
     count = Column(Integer, nullable=False)
     notes = Column(String(500), nullable=True)
+
+class Inventory(Base):
+    __tablename__ = "inventory"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    quantity = Column(Float, nullable=False)
+    unit = Column(String, nullable=False)
+    min_stock = Column(Float, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    user = relationship("User", back_populates="inventory")
+
+class Task(Base):
+    __tablename__ = "tasks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False)
+    priority = Column(String, default="Medium")  # Low, Medium, High
+    due_date = Column(Date, nullable=False)
+    assigned_to = Column(String, nullable=True)
+    status = Column(String, default="Pending")  # Pending, Completed
+    created_at = Column(DateTime, default=datetime.utcnow)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    user = relationship("User", back_populates="tasks")
+

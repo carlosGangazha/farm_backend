@@ -2,12 +2,12 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import Base, engine, get_db
-from models import User, Crop, Livestock, Field
+from models import User, Crop, Livestock, Field, Inventory,Task
 from schemas import (
     UserCreate, UserLogin, Token, 
     CropResponse, CropCreate, 
     LivestockResponse, LivestockCreate,
-    Coordinate, FieldCreate, FieldResponse
+    Coordinate, FieldCreate, FieldResponse,InventoryCreate,InventoryResponse,TaskResponse,TaskCreate
 )
 from auth import hash_password, verify_password, create_access_token
 from geoalchemy2.shape import to_shape, from_shape
@@ -282,3 +282,112 @@ def delete_field(field_id: int, db: Session = Depends(get_db)):
     db.delete(field)
     db.commit()
     return {"message": "Field deleted successfully"}
+
+# Inventory endpoints
+@app.post("/inventory", response_model=InventoryResponse, status_code=status.HTTP_201_CREATED)
+def create_inventory_item(item: InventoryCreate, db: Session = Depends(get_db)):
+    new_item = Inventory(
+        name=item.name,
+        quantity=item.quantity,
+        unit=item.unit,
+        min_stock=item.min_stock
+    )
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+@app.get("/inventory", response_model=list[InventoryResponse])
+def get_inventory(db: Session = Depends(get_db)):
+    return db.query(Inventory).all()
+
+@app.get("/inventory/{item_id}", response_model=InventoryResponse)
+def get_inventory_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Inventory).filter(Inventory.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+    return item
+
+@app.put("/inventory/{item_id}", response_model=InventoryResponse)
+def update_inventory_item(item_id: int, item_data: InventoryCreate, db: Session = Depends(get_db)):
+    item = db.query(Inventory).filter(Inventory.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    item.name = item_data.name
+    item.quantity = item_data.quantity
+    item.unit = item_data.unit
+    item.min_stock = item_data.min_stock
+    db.commit()
+    db.refresh(item)
+    return item
+
+@app.delete("/inventory/{item_id}")
+def delete_inventory_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(Inventory).filter(Inventory.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    db.delete(item)
+    db.commit()
+    return {"message": "Inventory item deleted successfully"}
+
+@app.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    new_task = Task(
+        title=task.title,
+        priority=task.priority,
+        due_date=task.due_date,
+        assigned_to=task.assigned_to,
+        status="Pending"
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
+@app.get("/tasks", response_model=list[TaskResponse])
+def get_tasks(db: Session = Depends(get_db)):
+    return db.query(Task).all()
+
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+@app.put("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, task_data: TaskCreate, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    task.title = task_data.title
+    task.priority = task_data.priority
+    task.due_date = task_data.due_date
+    task.assigned_to = task_data.assigned_to
+    db.commit()
+    db.refresh(task)
+    return task
+
+@app.patch("/tasks/{task_id}/toggle", response_model=TaskResponse)
+def toggle_task_status(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task.status = "Completed" if task.status == "Pending" else "Pending"
+    db.commit()
+    db.refresh(task)
+    return task
+
+@app.delete("/tasks/{task_id}")
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(task)
+    db.commit()
+    return {"message": "Task deleted successfully"}
