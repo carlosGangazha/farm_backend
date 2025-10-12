@@ -2,27 +2,34 @@ from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import Base, engine, get_db
-from models import User, Crop, Livestock
-from schemas import UserCreate, UserLogin, Token, CropResponse, CropCreate, LivestockResponse, LivestockCreate
+from models import User, Crop, Livestock, Field
+from schemas import (
+    UserCreate, UserLogin, Token, 
+    CropResponse, CropCreate, 
+    LivestockResponse, LivestockCreate,
+    Coordinate, FieldCreate, FieldResponse
+)
 from auth import hash_password, verify_password, create_access_token
+from geoalchemy2.shape import to_shape, from_shape
+from shapely.geometry import Polygon
+from datetime import datetime
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Farm Management")
 
-# CORS Configuration - Allow all Vercel deployments
+# CORS Configuration
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://ruth-project-64ut.vercel.app",
-    # Temporarily allow all origins to test (REMOVE IN PRODUCTION)
     "*"
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_credentials=False,  # MUST be False when using "*"
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Content-Type", "Authorization", "Accept", "Origin"],
     expose_headers=["*"],
@@ -37,7 +44,6 @@ def read_root():
 # Authentication endpoints
 @app.post("/signup", response_model=Token)
 def signup(user: UserCreate, db: Session = Depends(get_db)):
-    # Check existing user
     db_user = (
         db.query(User)
         .filter((User.email == user.email) | (User.username == user.username))
@@ -112,7 +118,7 @@ def delete_crop(crop_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": "Crop deleted successfully"}
 
-# Livestock endpoints (following exact same pattern as crops)
+# Livestock endpoints
 @app.post("/livestock", response_model=LivestockResponse, status_code=status.HTTP_201_CREATED)
 def create_livestock(livestock: LivestockCreate, db: Session = Depends(get_db)):
     new_livestock = Livestock(
@@ -131,7 +137,7 @@ def get_livestock(db: Session = Depends(get_db)):
     return db.query(Livestock).all()
 
 @app.get("/livestock/{livestock_id}", response_model=LivestockResponse)
-def get_livestock(livestock_id: int, db: Session = Depends(get_db)):
+def get_single_livestock(livestock_id: int, db: Session = Depends(get_db)):
     livestock = db.query(Livestock).filter(Livestock.id == livestock_id).first()
     if not livestock:
         raise HTTPException(status_code=404, detail="Livestock not found")
@@ -160,3 +166,119 @@ def delete_livestock(livestock_id: int, db: Session = Depends(get_db)):
     db.delete(livestock)
     db.commit()
     return {"message": "Livestock deleted successfully"}
+
+# Field endpoints
+@app.post("/fields", response_model=FieldResponse, status_code=status.HTTP_201_CREATED)
+def create_field(field: FieldCreate, db: Session = Depends(get_db)):
+    coords = [(coord.lng, coord.lat) for coord in field.coordinates]
+    polygon = Polygon(coords)
+    center = polygon.centroid
+    
+    new_field = Field(
+        name=field.name,
+        area=field.area,
+        ndvi=field.ndvi,
+        geometry=from_shape(polygon, srid=4326),
+        center_lat=center.y,
+        center_lng=center.x,
+        last_updated=datetime.utcnow()
+    )
+    
+    db.add(new_field)
+    db.commit()
+    db.refresh(new_field)
+    
+    geom = to_shape(new_field.geometry)
+    coordinates = [Coordinate(lat=lat, lng=lng) for lng, lat in geom.exterior.coords[:-1]]
+    
+    return FieldResponse(
+        id=new_field.id,
+        name=new_field.name,
+        coordinates=coordinates,
+        center=Coordinate(lat=new_field.center_lat, lng=new_field.center_lng),
+        area=new_field.area,
+        ndvi=new_field.ndvi,
+        last_updated=new_field.last_updated or datetime.utcnow()
+    )
+
+@app.get("/fields", response_model=list[FieldResponse])
+def get_fields(db: Session = Depends(get_db)):
+    fields = db.query(Field).all()
+    result = []
+    
+    for field in fields:
+        geom = to_shape(field.geometry)
+        coordinates = [Coordinate(lat=lat, lng=lng) for lng, lat in geom.exterior.coords[:-1]]
+        result.append(FieldResponse(
+            id=field.id,
+            name=field.name,
+            coordinates=coordinates,
+            center=Coordinate(lat=field.center_lat, lng=field.center_lng),
+            area=field.area,
+            ndvi=field.ndvi,
+            last_updated=field.last_updated or datetime.utcnow()
+        ))
+    
+    return result
+
+@app.get("/fields/{field_id}", response_model=FieldResponse)
+def get_field(field_id: int, db: Session = Depends(get_db)):
+    field = db.query(Field).filter(Field.id == field_id).first()
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    
+    geom = to_shape(field.geometry)
+    coordinates = [Coordinate(lat=lat, lng=lng) for lng, lat in geom.exterior.coords[:-1]]
+    
+    return FieldResponse(
+        id=field.id,
+        name=field.name,
+        coordinates=coordinates,
+        center=Coordinate(lat=field.center_lat, lng=field.center_lng),
+        area=field.area,
+        ndvi=field.ndvi,
+        last_updated=field.last_updated or datetime.utcnow()
+    )
+
+@app.put("/fields/{field_id}", response_model=FieldResponse)
+def update_field(field_id: int, field_data: FieldCreate, db: Session = Depends(get_db)):
+    field = db.query(Field).filter(Field.id == field_id).first()
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+    
+    coords = [(coord.lng, coord.lat) for coord in field_data.coordinates]
+    polygon = Polygon(coords)
+    center = polygon.centroid
+    
+    field.name = field_data.name
+    field.area = field_data.area
+    field.ndvi = field_data.ndvi
+    field.geometry = from_shape(polygon, srid=4326)
+    field.center_lat = center.y
+    field.center_lng = center.x
+    
+    db.commit()
+    db.refresh(field)
+    
+    geom = to_shape(field.geometry)
+    coordinates = [Coordinate(lat=lat, lng=lng) for lng, lat in geom.exterior.coords[:-1]]
+    
+    return FieldResponse(
+        id=field.id,
+        name=field.name,
+        coordinates=coordinates,
+        center=Coordinate(lat=field.center_lat, lng=field.center_lng),
+        area=field.area,
+        ndvi=field.ndvi,
+        last_updated=field.last_updated or datetime.utcnow()
+    )
+
+@app.delete("/fields/{field_id}")
+def delete_field(field_id: int, db: Session = Depends(get_db)):
+    field = db.query(Field).filter(Field.id == field_id).first()
+    if not field:
+        raise HTTPException(status_code=404, detail="Field not found")
+
+    db.delete(field)
+    db.commit()
+    return {"message": "Field deleted successfully"}

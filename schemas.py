@@ -1,23 +1,19 @@
 from pydantic import BaseModel, constr
-from datetime import date
-from typing import Optional
+from datetime import date, datetime  # Import specific classes
+from typing import Optional, List
 
 class UserCreate(BaseModel):
     username: str
     email: str
     password: constr(min_length=6, max_length=72) # type: ignore
 
-
-
 class UserLogin(BaseModel):
     email: str
     password: str
 
-
 class Token(BaseModel):
     access_token: str
     token_type: str
-
 
 class CropBase(BaseModel):
     name: str
@@ -52,3 +48,26 @@ class LivestockResponse(BaseModel):
     breed: str
     count: int
     notes: Optional[str] = None
+
+# GIS schemas - FIXED
+class Coordinate(BaseModel):
+    lat: float
+    lng: float
+
+class FieldCreate(BaseModel):
+    name: str
+    coordinates: List[Coordinate]  # Use List from typing
+    area: float
+    ndvi: Optional[float] = None
+
+class FieldResponse(BaseModel):
+    id: int
+    name: str
+    coordinates: List[Coordinate]
+    center: Coordinate
+    area: float
+    ndvi: Optional[float] = None
+    last_updated: datetime
+    
+    class Config:
+        from_attributes = True
